@@ -1,0 +1,416 @@
+---
+title: "Pokedex"
+language: polski.yml
+author: "Monika Korniak"
+format: 
+  html:
+    date: today
+    echo: false
+    warning: false
+    message: false
+    self-contained: true
+    page-layout: full
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Wstęp
+
+Raport przedstawia analizę parametrów dotyczących pokemonów, pełna baza danych dostępna pod linkiem [Pokedex](https://pokemondb.net/pokedex/all "pokedex").
+
+**Parametry pokemonów**
+
+-   `Name`- nazwa Pokemona
+
+-   `Type`- typ Pokemona
+
+-   `HP`- określa, ile obrażeń może otrzymać Pokemon przed omdleniem
+
+-   `Attack`- atak ,określa ile obrażeń zadaje Pokemon podczas wykonywania ruchu fizycznego
+
+-   `Defense`- obrona, określa ile obrażeń otrzymuje Pokemon, gdy zostanie trafiony ruchem fizycznym
+
+-   `Sp. Atk.` (Special Attack) -atak specjalny, określa ile obrażeń zadaje Pokemon podczas używania specjalnego ruchu.
+
+-   `Sp. Def` (Special Defence)- obrona specjalna, określa ile obrażeń otrzymuje Pokemon, gdy zostanie trafiony specjalnym ruchem.
+
+-   `Speed`- prędkość, określa kolejność wykonania ruchu podczas walki
+
+-   `Total`- suma powyższych punktów
+
+```{r}
+library(rvest)
+library(tidyverse)
+library(DT)
+library(htmltools)
+link <- "https://pokemondb.net/pokedex/all"
+page <- read_html(link)
+Dane <- page %>%
+  html_nodes("tr td") %>%
+  html_text()
+Dane <- matrix(Dane, ncol=10,byrow = T)
+Dane <- Dane[,-1]
+Dane <- as.data.frame(Dane)
+colnames(Dane)<- c("Name","Type","Total","HP","Attack","Defense","Sp.Atk","Sp.Def","Speed")
+
+Dane$Total <- as.integer(Dane$Total)  
+Dane$HP <- as.integer(Dane$HP)  
+Dane$Attack <- as.integer(Dane$Attack)  
+Dane$Defense <- as.integer(Dane$Defense)
+Dane$Sp.Atk <- as.integer(Dane$Sp.Atk)  
+Dane$Sp.Def <- as.integer(Dane$Sp.Def)
+Dane$Speed <- as.integer(Dane$Speed)
+Dane$Type <- sapply(strsplit(Dane$Type," "),function(x) paste(sort(x),collapse=" "))
+
+library(stringr)
+
+Dane$Type <- str_replace_all(
+  string =  Dane$Type,
+  pattern = "([[:upper:]])",
+  replacement = " \\1"
+) 
+
+Dane$Name <- str_replace_all(
+  string =  Dane$Name,
+  pattern = "([[:upper:]])",
+  replacement = " \\1"
+)  
+
+
+
+AttackEff <- read.csv2("C:\\Users\\mkorn\\Desktop\\studia\\studiasemestr3\\PozyskiwanieWizualizacjaDanych\\Projekt\\P.csv")
+
+
+
+library(stringr)
+library(dplyr)
+library(tidyr)
+
+
+
+Dane2 <- Dane %>%
+  separate(Type,c("Type3","Type1","Type2"))
+Dane2 <- Dane2[,-2]
+```
+
+```{r}
+#| label: tbl-Pokemony
+#| tbl-cap:  Poglądowe dziesięć pierwszych rekordów tabeli
+
+imagesurl <- page %>%
+html_nodes(".icon-pkmn") %>%
+html_attr("src")
+Pokemon <- sprintf('![](%s)', imagesurl)
+imagesdf <- data.frame(imagesurl)
+library(knitr)
+Tabela <- cbind(Pokemon,Dane)
+headTabela <- head(cbind(Pokemon,Dane),n=10) %>%
+kable() 
+headTabela
+
+
+
+
+
+
+
+```
+
+## Statystyki opisowe i współczynnik korelacji
+
+@tbl-Statystki przedstawia statystyki opisowe zbioru danych, wartość maksymalną, minimalną, średnią oraz odchylenie standardowe.
+
+```{r}
+#| label: tbl-Statystki
+#| tbl-cap:  Statystyki opisowe
+
+library(tidyverse)
+library(rstatix)
+library(gtsummary)
+library(gt)
+
+
+
+statystyki <- Dane %>%
+  get_summary_stats(show=c("min","max","mean","sd")) %>%
+  gt()  %>%
+  fmt_number(columns = mean:sd, decimals = 2)
+statystyki
+
+
+```
+
+Na @fig-korelacja została przedstawiona korelacja pomiędzy poszczególnymi parametrami. Jak można się domyślić zależność pomiędzy `Total` , a resztą zmiennych jest wysoki. Współczynnikiem korelacji bliskim 0,5 charakteryzuje się zależność pomiędzy `Special Defense` i `Defense` oraz `Special Defense` i `Special Attack.`
+
+```{r}
+#| label: fig-korelacja
+#| fig-cap: Macierz korelacji
+
+Dane %>%
+  select(where(is.numeric)) %>%
+  cor_mat() %>%
+  cor_plot(type = "lower" , label = T,
+           font.label = list(color="dark blue"), insignificant = "blank") 
+
+ 
+
+```
+
+## Analiza typu Pokemonów
+
+@fig-typLiczebnosc przedstawia ilość Pokemonów reprezentujących dany typ, można wyszczególnić 162 typy. Najbardziej liczne to `Water` i `Normal`.
+
+```{r}
+#| label: fig-typLiczebnosc
+#| fig-cap: Liczebność typów pokemonów
+library(DT)
+library(base)
+
+Dane$Type <- sapply(strsplit(Dane$Type," "),function(x) paste(sort(x),collapse=" "))
+
+
+ Dane %>%
+  group_by(Type) %>%
+  count() %>%
+  datatable() 
+
+
+
+
+ 
+```
+
+@fig-sredniaTyp przedstawia uśrednione parametry z podziałem na typy. Wynika z tego iż, najsilniejszym typem jest `Dragon Poison` (biorąc pod uwagę `Total` i `HP`). Najlepszym atakiem charakteryzuje się typ `Fire Ice`(również najszybszy)`,` a obroną `Rock Steel` .
+
+```{r}
+#| label: fig-sredniaTyp
+#| fig-cap: Średnia parametrów z podziałem na typ
+
+Dane %>%
+  group_by(Type) %>%
+  summarise(mean_total= round(mean(Total),2),mean_attack = round(mean(Attack),2), mean_defense=round(mean(Defense),2), mean_HP= round(mean(HP),2), 
+            mean_speed=round(mean(Speed),2)) %>% 
+  datatable()
+
+```
+
+@fig-Liczebnosc przedstawia liczebność podstawowych typów Pokemonów (jeden Pokemon ma jeden lub dwa typy podstawowe).
+
+```{r}
+#| label: fig-Liczebnosc
+#| fig-cap: Liczebność podstawowych typów
+#| out-width: 100%
+#| out-height: 100%
+
+t1 <- Dane2 %>%
+  count(Type1)
+
+t2 <- Dane2 %>% 
+  count(Type2) 
+
+a <- ifelse(t1$Type1==t2$Type2,t1$n+t2$n)
+df <- data.frame("Type"=t2$Type2, "n"=a)   %>%  drop_na()
+
+
+library(gganimate)
+ggplot(df, aes(y=reorder(Type,-n), x=n, fill=Type)) + 
+  geom_bar(stat='identity') +
+  ylab("Basic type") +
+  geom_text(aes(label = n), vjust = -0.5, size = 2) 
+```
+
+## Zestawienie Pokemonów
+
+@fig-najslabsze1, @fig-przecietne1, @fig-najsilniejsi1, przedstawiają zestawienie odpowiednio najsłabszych, przeciętnych i najsilniejszych Pokemonów. Uwzględniono `Defense`, `Attack`. Kolory reprezentują pierwszy z typów Pokemona, wielkość kropki zależy od `Total`. W celu zwiększenia czytelności wykresu, należy go przybliżyć. Podwójne kliknięcie na rekord legendy, spowoduje wyodrębnienie go.
+
+```{r}
+#| label: fig-najslabsze1 
+#| fig-cap: Zestawienie najsłabszych Pokemonów z podziałem na pierwszy typ
+
+
+
+library(ggplot2)
+library(plotly)
+library(gapminder)
+
+
+
+
+p1 <- Dane2 %>%
+   filter(Total<=385) %>%
+  ggplot(aes(Name=Name, Attack,Defense,size=Total,color=Type1, Type2= Type2))+
+  geom_point() +
+  theme_bw() 
+  
+ggplotly(p1)
+
+ 
+```
+
+\
+
+```{r}
+#| label: fig-przecietne1
+#| fig-cap: Zestawienie przeciętnych Pokemonów z podziałem na pierwszy typ
+
+s1 <- Dane2 %>%
+   filter(Total >385 & Total <=480) %>%
+  ggplot( aes(Name=Name, Attack,Defense,size=Total,color=Type1, Type2= Type2)) +
+  geom_point() +
+  theme_bw()
+
+ggplotly(s1)
+
+
+
+```
+
+```{r}
+#| label: fig-najsilniejsi1
+#| fig-cap: Zestawienie najsilniejszych Pokemonów z podziałem na pierwszy typ
+
+m1 <- Dane2 %>%
+   filter(Total>480) %>%
+  ggplot( aes(Name=Name, Attack,Defense,size=Total,color=Type1, Type2= Type2)) +
+  geom_point() +
+  theme_bw()
+
+ggplotly(m1)
+
+
+
+
+```
+
+@fig-Attack przedstawia wykres rozrzutu pomiędzy `attack`, a `special attack.` Z wykresu wynika iż istnieją Pokemony, u których `special attack` jest równy `attack`. U większości jednak te wartości się rozmijają.
+
+```{r}
+#| label: fig-Attack
+#| fig-cap: Zależność pomiędzy attack, a special attack
+#| out-width: 100%
+#| out-height: 100%
+
+Dane %>%
+  ggplot(aes(Attack, Sp.Atk)) +
+  geom_point() 
+  
+
+```
+
+@fig-Defense przedstawia wykres rozrzutu pomiędzy `defense`, a `special defense.` Z wykresu wynika iż istnieją Pokemony, u których `special defense` jest równa `defense`. U większości jednak te wartości się rozmijają.
+
+```{r}
+#| label: fig-Defense
+#| fig-cap: Zależność pomiędzy defense, a special defense
+#| out-width: 100%
+#| out-height: 100%
+
+Dane %>%
+  ggplot(aes(Defense, Sp.Def)) +
+  geom_point()
+
+
+```
+
+```{r}
+
+```
+
+## Top 4 Pokemony
+
+@tbl-najlepsze przedstawia wszystkie parametry wraz z wizerunkiem czterech najsilniejszych Pokemonów (z największym `Total)`.
+
+```{r}
+#| label: tbl-najlepsze
+#| tbl-cap: Zestawienie czterech najsilniejszych Pokemonów
+
+a <- head(sort(Dane$Total, decreasing = TRUE), n=2)
+
+naj <- Tabela %>%
+  filter(Total %in% a)   
+
+
+naj %>% 
+  arrange(desc(Total)) %>%
+  kable()
+```
+
+@fig-wykresNajlepsi przedstawia hierarchię najlepszych Pokemonów, jak można zauważyć jeden z nich- `Eternatus Eternmax` wysuwa się na prowadzenie, reszta jest na równi.
+
+```{r}
+#| label: fig-wykresNajlepsi
+#| fig-cap: Hierarchia najlepszych Pokemonów
+#| out-width: 100%
+#| out-height: 100%
+
+library(gganimate)
+
+ggplot(naj, aes(x=reorder(Type,-Total), y=Total, fill=Name)) +  
+  geom_bar(stat='identity')+
+  theme_bw() +
+  xlab("Type")
+
+
+
+
+
+```
+
+@fig-wykres2Najlepsi przedstawia zależność `HP` i `Speed` u najlepszych Pokemonów.
+
+```{r}
+#| label: fig-wykres2Najlepsi
+#| fig-cap: Zależność HP od Speed u najlepszych Pokemonów
+
+n <- naj %>% 
+  ggplot(aes(HP,Speed,color=Type, Total=Total, Name=Name)) +
+  geom_point() +
+  theme_bw()
+
+ggplotly(n)
+  
+
+```
+
+## Efektywność ataków
+
+Kolejną analizowaną kwestią jest efektywność jednego ataku na drugi.
+
+```{r}
+#| label: fig-EfektywnośćAtaku
+#| fig-cap: Efektywność ataków
+
+
+AttackEff %>%
+  datatable() %>%
+  formatStyle(
+  'Multiplier',
+  backgroundColor = styleEqual(c(0, 0.5,1,2), c("#DCDCDC", "#D3D3D3", "#C0C0C0","#A9A9A9"))
+)  %>%
+  formatStyle(
+  'Effectiveness',
+  backgroundColor = styleEqual(c("No Effect", "Not Very Effective","Normal","Super Effective"), c("#DCDCDC", "#D3D3D3", "#C0C0C0","#A9A9A9"))
+)
+```
+
+```{r}
+#| label: fig-EfektywnośćAtakoW
+#| fig-cap: Wizualizacja efektywności ataków
+#| out-width: 100%
+#| out-height: 100%
+
+A <- AttackEff %>%
+  ggplot( aes(Attack,Defense, size =Multiplier, color=Effectiveness)) +
+  geom_point() +
+  theme_bw()  
+
+ggplotly(A)
+
+
+```
+
+```{r}
+
+
+```
